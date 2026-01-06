@@ -59,7 +59,7 @@ const ChartViewer = ({ data: selectedData, loading }) => {
   const chartData = prepareChartData(selectedData);
   
   return (
-    <div className="bg-black rounded-lg p-4 max-h-[92%] flex items-center justify-center">
+    <div className="bg-black rounded-lg p-1 h-[92%] overflow-auto flex items-center justify-center">
       {loading ? (
         <div className="flex flex-col items-center justify-center w-full h-full">
           <svg className="animate-spin h-8 w-8 text-green-400 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

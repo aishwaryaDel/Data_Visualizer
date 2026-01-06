@@ -70,7 +70,7 @@ const Main = () => {
 
         <div className='w-[90vw] h-[100%] flex flex-col items-end justify-between gap-4'>
           {/* Prompt bar here */}
-          <PromptBar setSelectedData={handleSetSelectedData} />
+          <PromptBar setSelectedData={setSelectedData} />
 
           {/* Right container display visualization */}
           <div className='w-full h-[100%] border overflow-auto border-gray-500 rounded-md pt-1 pb-3 px-5'>
