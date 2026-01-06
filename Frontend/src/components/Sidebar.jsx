@@ -59,7 +59,7 @@ const SideBar = ({ view, setView, toggleModal }) => {
                     text-white uppercase font-semibold rounded-md cursor-pointer transition-all 
                     duration-300 ${expanded ? 'h-full' : ''}`}>
 
-                    <div className={`flex items-center justify-center gap-1 w-full bg-gray-900
+                    <div className={`flex items-center justify-center gap-1 w-full bg-gray-900 cursor-pointer
                       ${expanded ? 'border rounded-t-md' : 'border-t rounded-md'} border-gray-500`}
                     onClick={() => setExpanded(e => !e)}>
                         Data <FiArrowUpCircle className={`transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`} />

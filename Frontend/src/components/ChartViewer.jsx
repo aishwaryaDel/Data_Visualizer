@@ -1,51 +1,5 @@
 import React from 'react';
-import { Line } from 'react-chartjs-2';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend
-} from 'chart.js';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend
-);
-
-const options = {
-  responsive: true,
-  plugins: {
-    legend: {
-      position: 'top',
-      labels: {
-        color: '#fff',
-      },
-    },
-    tooltip: {
-      mode: 'index',
-      intersect: false,
-    },
-  },
-  scales: {
-    x: {
-      ticks: { color: '#fff' },
-      grid: { color: 'rgba(255,255,255,0.1)' },
-    },
-    y: {
-      ticks: { color: '#fff' },
-      grid: { color: 'rgba(255,255,255,0.1)' },
-    },
-  },
-};
+import LineChart from './Visuals/LineChart';
 
 function prepareChartData(selectedData) {
   if (!Array.isArray(selectedData) || selectedData.length === 0) {
@@ -101,9 +55,11 @@ function prepareChartData(selectedData) {
 
 
 const ChartViewer = ({ data: selectedData, loading }) => {
+  
   const chartData = prepareChartData(selectedData);
+  
   return (
-    <div className="bg-black rounded-lg p-4 min-h-[300px] flex items-center justify-center">
+    <div className="bg-black rounded-lg p-4 max-h-[92%] flex items-center justify-center">
       {loading ? (
         <div className="flex flex-col items-center justify-center w-full h-full">
           <svg className="animate-spin h-8 w-8 text-green-400 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -113,7 +69,7 @@ const ChartViewer = ({ data: selectedData, loading }) => {
           <span className="text-green-400">Loading chart...</span>
         </div>
       ) : (
-        <Line data={chartData} options={options} />
+        <LineChart data={chartData} />
       )}
     </div>
   );

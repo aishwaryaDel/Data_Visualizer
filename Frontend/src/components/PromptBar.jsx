@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-
+import sampleData from '../sampleData.json';
 import { fetchPromptResponse } from '../api_functions/api';
 
 const PromptBar = ({ setSelectedData }) => {
@@ -18,11 +18,10 @@ const PromptBar = ({ setSelectedData }) => {
       setIsTyping(false);
       if (searchPrompt) {
         setSelectedData(null);
+        setSelectedData(sampleData); // Replace with actual data from apiResponse
         try {
           const apiResponse = await fetchPromptResponse(searchPrompt);
-          console.log('API Response:', apiResponse);
           setResponseData(apiResponse);
-          // setSelectedData(apiResponse);
         } catch (error) {
           // Optionally handle error
           setSelectedData({ error: 'API request failed.' });
@@ -30,7 +29,6 @@ const PromptBar = ({ setSelectedData }) => {
       }
     }
   };
-  console.log('Response Data:', responseData);
 
   return (
     <>
@@ -40,7 +38,7 @@ const PromptBar = ({ setSelectedData }) => {
         value={searchPrompt}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        className={`w-[100%] bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none transition-all duration-300 resize-none ${isTyping ? 'h-[70%]' : 'h-[32px]'}`}
+        className={`w-[100%] cursor-auto bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none transition-all duration-300 resize-none ${isTyping ? 'h-[70%]' : 'h-[32px]'}`}
         style={isTyping ? { height: '50%' } : { height: '32px' }}
         rows={isTyping ? 6 : 1}
       />
