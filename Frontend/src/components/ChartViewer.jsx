@@ -1,21 +1,42 @@
 import React from 'react';
 import LineChart from './Visuals/LineChart';
+import BarChart from './Visuals/BarChart';
+import PieChart from './Visuals/PieChart';
 
-function prepareChartData(selectedData) {
-  if (!Array.isArray(selectedData) || selectedData.length === 0) {
+function prepareChartData(selectedData, selection) {
+  if (!Array.isArray(selectedData) || selectedData.length === 0 || !selection) {
     return {
       labels: [],
       datasets: [],
     };
   }
 
-  // Get unique dates for x-axis
-  const labels = Array.from(new Set(selectedData.map(item => item.date)));
+  const { xAxisColumn, yAxisColumn, groupByColumn, dateColumn } = selection;
+  const xKey = dateColumn || xAxisColumn;
+  const yKey = yAxisColumn;
+  const groupKey = groupByColumn;
 
-  // Get unique tags
-  const tags = Array.from(new Set(selectedData.map(item => item.tag)));
+  // Get unique x values for x-axis
+  let labels = Array.from(new Set(selectedData.map(item => item[xKey])));
 
-  // Assign colors for tags
+  // Format labels if they are date/timestamp
+  function formatDate(val) {
+    if (!val) return '';
+    // Try to parse as ISO string
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      // Format as 'YYYY-MM-DD HH:mm:ss'
+      return d.toLocaleString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '');
+    }
+    return val;
+  }
+  const formattedLabels = labels.map(formatDate);
+
+  // Get unique groups (if any)
+  const groups = groupKey ? Array.from(new Set(selectedData.map(item => item[groupKey]))) : [null];
+
+  // Assign colors for groups
   const colors = [
     'rgba(34,197,94,1)',
     'rgba(59,130,246,1)',
@@ -35,14 +56,14 @@ function prepareChartData(selectedData) {
     'rgba(239,68,68,0.2)'
   ];
 
-  const datasets = tags.map((tag, idx) => {
-    // For each tag, get values for each label (date)
-    const data = labels.map(date => {
-      const found = selectedData.find(item => item.date === date && item.tag === tag);
-      return found ? found.value : null;
+  // For each group, build a data array aligned to all labels, fill missing with 0
+  const datasets = groups.map((group, idx) => {
+    const data = labels.map(label => {
+      const found = selectedData.find(item => item[xKey] === label && (!groupKey || item[groupKey] === group));
+      return found ? parseFloat(found[yKey]) : 0;
     });
     return {
-      label: tag,
+      label: group !== null ? group : yKey,
       data,
       borderColor: colors[idx % colors.length],
       backgroundColor: bgColors[idx % bgColors.length],
@@ -50,16 +71,15 @@ function prepareChartData(selectedData) {
     };
   });
 
-  return { labels, datasets };
+  return { labels: formattedLabels, datasets };
 }
 
 
-const ChartViewer = ({ data: selectedData, loading }) => {
-  
-  const chartData = prepareChartData(selectedData);
-  
+const ChartViewer = ({ data: selectedData, selection, loading }) => {
+  const chartType = selection?.chartType;
+  const chartData = prepareChartData(selectedData, selection);
   return (
-    <div className="bg-black rounded-lg p-1 h-[92%] overflow-auto flex items-center justify-center">
+    <div className="bg-black rounded-lg p-1 max-h-[92%] overflow-auto flex items-center justify-center">
       {loading ? (
         <div className="flex flex-col items-center justify-center w-full h-full">
           <svg className="animate-spin h-8 w-8 text-green-400 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -69,7 +89,15 @@ const ChartViewer = ({ data: selectedData, loading }) => {
           <span className="text-green-400">Loading chart...</span>
         </div>
       ) : (
-        <LineChart data={chartData} />
+        chartType === 'line' ? (
+          <LineChart data={chartData} selection={selection} />
+        ) : chartType === 'bar' ? (
+          <BarChart data={chartData} selection={selection} />
+        ) : chartType === 'pie' ? (
+          <PieChart data={chartData} />
+        ) : (
+          <div className="text-green-400">Unsupported chart type</div>
+        )
       )}
     </div>
   );

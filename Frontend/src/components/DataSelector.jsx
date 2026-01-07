@@ -6,13 +6,13 @@ import { FiUpload } from 'react-icons/fi';
 import { analyzeTableForVisualization } from '../api_functions/api';
 
 const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSelection, setSelectedData }) => {
-  const [dbFile, setDbFile] = useState(null);
   const [tables, setTables] = useState([]);
-  const [db, setDb] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [sqlJs, setSqlJs] = useState(null);
   const fileInputRef = useRef();
+  const dbFile = selection.dbFile;
+  const db = selection.db;
 
   // Load SQL.js library on component mount
   useEffect(() => {
@@ -45,10 +45,9 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
       return;
     }
 
-    setDbFile(file);
     setIsLoading(true);
     setTables([]);
-    setSelection(sel => ({ ...sel, selectedTable: '' }));
+    setSelection(sel => ({ ...sel, dbFile: file, selectedTable: '' }));
 
     try {
       // Read file as array buffer
@@ -57,7 +56,7 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
       // Load the database
       const uint8Array = new Uint8Array(fileBuffer);
       const database = new sqlJs.Database(uint8Array);
-      setDb(database);
+      setSelection(sel => ({ ...sel, db: database }));
       
       // Query to get all table names
       const result = database.exec(`
@@ -77,13 +76,12 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
     } catch (error) {
       console.error('Error parsing database file:', error);
       alert('Failed to parse database file. Please ensure it is a valid SQLite database.');
-      setDbFile(null);
+      setSelection(sel => ({ ...sel, dbFile: null, db: null }));
       setTables([]);
     } finally {
       setIsLoading(false);
     }
   };
-
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -113,15 +111,26 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
         : [];
 
       // Call API to analyze table structure
-      console.log('Analyzing table structure...');
       const analysis = await analyzeTableForVisualization(columns, sampleRows);
-      console.log('Analysis result:', analysis);
+
+      // Set all analysis fields and selected table in selection
+      if (setSelection) {
+        setSelection(prev => ({
+          ...prev,
+          ...analysis,
+          selectedTable: selection.selectedTable
+        }));
+      }
 
       // Extract data based on result range
       let limit = '';
       let orderBy = '';
       
       switch (selection.selectedResultRange) {
+        case 'last10':
+          limit = 'LIMIT 10';
+          orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} DESC` : '';
+          break;
         case 'last100':
           limit = 'LIMIT 100';
           orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} DESC` : '';
@@ -129,6 +138,10 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
         case 'last1000':
           limit = 'LIMIT 1000';
           orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} DESC` : '';
+          break;
+        case 'first10':
+          limit = 'LIMIT 10';
+          orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} ASC` : '';
           break;
         case 'first100':
           limit = 'LIMIT 100';
@@ -161,12 +174,10 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
         });
         return obj;
       });
-
+      console.log('Raw Data:', rawData);
       // Format data for chart visualization
       const formattedData = transformDataForChart(rawData, analysis);
-      
-      console.log('Formatted data:', formattedData);
-
+  
       if (setSelectedData) {
         setSelectedData(formattedData);
       }
@@ -184,42 +195,38 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
   // Transform raw database data into chart-ready format
   const transformDataForChart = (rawData, analysis) => {
     const { xAxisColumn, yAxisColumn, groupByColumn, dateColumn } = analysis;
-    
-    if (groupByColumn) {
-      // If there's a grouping column (like 'tag' or 'category')
-      return rawData.map(row => ({
-        date: row[dateColumn || xAxisColumn] || row[xAxisColumn],
-        tag: row[groupByColumn],
-        value: parseFloat(row[yAxisColumn]) || 0
-      }));
-    } else {
-      // Simple x-y mapping without grouping
-      return rawData.map(row => ({
-        date: row[dateColumn || xAxisColumn] || row[xAxisColumn],
-        tag: 'Data',
-        value: parseFloat(row[yAxisColumn]) || 0
-      }));
-    }
+    // Build keys for output
+    const xKey = dateColumn || xAxisColumn;
+    const yKey = yAxisColumn;
+    const groupKey = groupByColumn;
+
+    return rawData.map(row => {
+      let obj = {};
+      if (xKey) obj[xKey] = row[xKey];
+      if (yKey) obj[yKey] = row[yKey];
+      if (groupKey) obj[groupKey] = row[groupKey];
+      // Optionally include all columns if needed:
+      // Object.assign(obj, row);
+      return obj;
+    });
   };
 
   const handleReset = () => {
-    setSelection({ selectedTable: '', selectedDateRange: '', selectedResultRange: '' });
-    setDbFile(null);
-    setTables([]);
-    if (db) {
-      db.close();
-      setDb(null);
+    if (selection.db) {
+      selection.db.close();
     }
+    setSelection({ selectedTable: '', selectedDateRange: '', selectedResultRange: '', db: null, dbFile: null });
+    setTables([]);
   };
 
   // Cleanup database when component unmounts
   useEffect(() => {
     return () => {
-      if (db) {
-        db.close();
+      if (selection.db) {
+        selection.db.close();
       }
     };
-  }, [db]);
+  }, [selection.db]);
 
   return (
     <>
@@ -249,11 +256,11 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
                   <input
                     ref={fileInputRef}
                     id="upload-database"
+                    name="upload-database"
                     type="file"
                     accept=".db,.sqlite,.sqlite3"
                     onChange={handleFileChange}
                     className="hidden"
-                    required
                     disabled={isLoading}
                   />
                 </div>
@@ -263,7 +270,15 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
                 <select
                   id="select-table"
                   value={selection.selectedTable}
-                  onChange={(e) => setSelection(prev => ({ ...prev, selectedTable: e.target.value }))}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSelection(prev => ({
+                      ...prev,
+                      selectedTable: value,
+                      selectedDateRange: '30min',
+                      selectedResultRange: 'all'
+                    }));
+                  }}
                   className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
                   required
                   disabled={!dbFile || isLoading}
@@ -305,8 +320,10 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
                 >
                   <option value="">Select result range</option>
                   <option value="all">All Rows</option>
+                  <option value="last10">Last 10 Rows</option>
                   <option value="last100">Last 100 Rows</option>
                   <option value="last1000">Last 1000 Rows</option>
+                  <option value="first10">First 10 Rows</option>
                   <option value="first100">First 100 Rows</option>
                   <option value="first1000">First 1000 Rows</option>
                 </select>

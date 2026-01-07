@@ -12,12 +12,14 @@ const Main = () => {
   const [selectedData, setSelectedData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState('chart'); // 'chart' or 'table'
-  const [chartAnalysis, setChartAnalysis] = useState(null); // Store AI analysis results
   const [selection, setSelection] = useState({
+    dbFile: null,
     selectedTable: '',
     selectedDateRange: '',
     selectedResultRange: '',
+    chartType: 'line',
   });
+
 
   // Helper functions for formatting
   function formatDateRange(val) {
@@ -35,8 +37,10 @@ const Main = () => {
   function formatResultRange(val) {
     switch (val) {
       case 'all': return 'All rows';
+      case 'last10': return 'Last 10 rows';
       case 'last100': return 'Last 100 rows';
       case 'last1000': return 'Last 1000 rows';
+      case 'first10': return 'First 10 rows';
       case 'first100': return 'First 100 rows';
       case 'first1000': return 'First 1000 rows';
       default: return val;
@@ -83,9 +87,9 @@ const Main = () => {
             }
 
             {loading ? (
-              view === 'chart' ? <ChartViewer loading={true} /> : <TableViewer loading={true} />
+              view === 'chart' ? <ChartViewer selection={selection} data={selectedData} loading={true} /> : <TableViewer loading={true} />
             ) : selectedData ? (
-              view === 'chart' ? <ChartViewer data={selectedData} loading={false} /> : <TableViewer data={selectedData} loading={false} />
+              view === 'chart' ? <ChartViewer selection={selection} data={selectedData} loading={false} /> : <TableViewer data={selectedData} loading={false} />
             ) : (
               <div className=' text-gray-500 text-center py-8'>
                 Select Data for Visualization

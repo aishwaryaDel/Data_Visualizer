@@ -20,14 +20,21 @@ ChartJS.register(
 );
 
 
-const BarChart = ({ data }) => {
+
+const BarChart = ({ data, selection }) => {
+  const xLabel = selection?.dateColumn || selection?.xAxisColumn || 'X';
+  const yLabel = selection?.yAxisColumn || 'Y';
   const options = {
     responsive: true,
     plugins: {
       legend: {
+        display: true,
         position: 'top',
         labels: {
           color: '#fff',
+          font: { size: 11 },
+          boxWidth: 30,
+          padding: 20,
         },
       },
       tooltip: {
@@ -37,10 +44,22 @@ const BarChart = ({ data }) => {
     },
     scales: {
       x: {
+        title: {
+          display: true,
+          text: xLabel.toUpperCase(),
+          color: '#fff',
+          font: { size: 11, weight: 'bold' },
+        },
         ticks: { color: '#fff' },
         grid: { color: 'rgba(255,255,255,0.1)' },
       },
       y: {
+        title: {
+          display: true,
+          text: yLabel.toUpperCase(),
+          color: '#fff',
+          font: { size: 11, weight: 'bold' },
+        },
         ticks: { color: '#fff' },
         grid: { color: 'rgba(255,255,255,0.1)' },
       },

@@ -22,14 +22,21 @@ ChartJS.register(
 );
 
 
-const LineChart = ({ data }) => {
+
+const LineChart = ({ data, selection }) => {
+  const xLabel = selection?.dateColumn || selection?.xAxisColumn || 'X';
+  const yLabel = selection?.yAxisColumn || 'Y';
   const options = {
     responsive: true,
     plugins: {
       legend: {
+        display: true,
         position: 'top',
         labels: {
           color: '#fff',
+          font: { size: 11 },
+          boxWidth: 30,
+          padding: 20,
         },
       },
       tooltip: {
@@ -39,16 +46,40 @@ const LineChart = ({ data }) => {
     },
     scales: {
       x: {
+        title: {
+          display: true,
+          text: xLabel.toUpperCase(),
+          color: '#fff',
+          font: { size: 11, weight: 'bold' },
+        },
         ticks: { color: '#fff' },
         grid: { color: 'rgba(255,255,255,0.1)' },
       },
       y: {
+        title: {
+          display: true,
+          text: yLabel.toUpperCase(),
+          color: '#fff',
+          font: { size: 11, weight: 'bold' },
+        },
         ticks: { color: '#fff' },
         grid: { color: 'rgba(255,255,255,0.1)' },
       },
     },
   };
-  return <Line data={data} options={options} />;
+  // Ensure each dataset is a line and lines are shown
+  const chartData = {
+    ...data,
+    datasets: (data.datasets || []).map(ds => ({
+      ...ds,
+      type: 'line',
+      showLine: true,
+      pointRadius: 4,
+      fill: false,
+      borderWidth: 2,
+    }))
+  };
+  return <Line data={chartData} options={options} />;
 };
 
 export default LineChart;
