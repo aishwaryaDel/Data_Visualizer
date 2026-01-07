@@ -9,30 +9,32 @@ import SideBar from './Sidebar';
 const Main = () => {
 
   const [showModal, setShowModal] = useState(false);
+  const [tables, setTables] = useState([]);
   const [selectedData, setSelectedData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState('chart'); // 'chart' or 'table'
   const [selection, setSelection] = useState({
     dbFile: null,
+    db: null,
     selectedTable: '',
-    selectedDateRange: '',
+    // selectedDateRange: '',
     selectedResultRange: '',
     chartType: 'line',
   });
 
 
   // Helper functions for formatting
-  function formatDateRange(val) {
-    switch (val) {
-      case '30min': return 'Last 30 min';
-      case '1hr': return 'Last 1 hour';
-      case '1d': return 'Last 1 day';
-      case '7d': return 'Last 7 days';
-      case '15d': return 'Last 15 days';
-      case '30d': return 'Last 30 days';
-      default: return val;
-    }
-  }
+  // function formatDateRange(val) {
+  //   switch (val) {
+  //     case '30min': return 'Last 30 min';
+  //     case '1hr': return 'Last 1 hour';
+  //     case '1d': return 'Last 1 day';
+  //     case '7d': return 'Last 7 days';
+  //     case '15d': return 'Last 15 days';
+  //     case '30d': return 'Last 30 days';
+  //     default: return val;
+  //   }
+  // }
 
   function formatResultRange(val) {
     switch (val) {
@@ -66,12 +68,14 @@ const Main = () => {
     <>
       {/* Modal to create/raise ticket  */}
       <DataSelector showModal={showModal} setShowModal={setShowModal} toggleModal={toggleModal}
-        selection={selection} setSelection={setSelection} setSelectedData={handleSetSelectedData} />
+        selection={selection} setSelection={setSelection} setSelectedData={handleSetSelectedData}
+        tables={tables} setTables={setTables} />
 
       {/* Top container  */}
       <div className='h-[88vh] w-[95%] mx-auto mt-4 flex gap-4'>
 
-       <SideBar view={view} setView={setView} toggleModal={toggleModal} />
+       <SideBar view={view} setView={setView} toggleModal={toggleModal} 
+        tables={tables} selection={selection} />
 
         <div className='w-[90vw] h-[100%] flex flex-col items-end justify-between gap-4'>
           {/* Prompt bar here */}
@@ -80,8 +84,8 @@ const Main = () => {
           {/* Right container display visualization */}
           <div className='w-full h-[100%] border overflow-auto border-gray-500 rounded-md pt-1 pb-3 px-5'>
             {selectedData &&
-              <div className=' w-full flex items-center justify-end gap-4'>
-                <span className=' text-gray-500 text-sm py-2'>Time range: {formatDateRange(selection.selectedDateRange)}</span>
+              <div className='sticky top-0 z-10 w-full flex items-center justify-end gap-4'>
+                {/* <span className=' text-gray-500 text-sm py-2'>Time range: {formatDateRange(selection.selectedDateRange)}</span> */}
                 <span className=' text-gray-500 text-sm py-2'>Show: {formatResultRange(selection.selectedResultRange)}</span>
               </div>
             }

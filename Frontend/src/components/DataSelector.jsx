@@ -1,12 +1,12 @@
-
-
 import React, { useState, useRef, useEffect } from 'react';
 import { IoMdClose } from "react-icons/io";
 import { FiUpload } from 'react-icons/fi';
 import { analyzeTableForVisualization } from '../api_functions/api';
+import { extractTableInfo } from '../api_functions/sqlExtract';
 
-const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSelection, setSelectedData }) => {
-  const [tables, setTables] = useState([]);
+const DataSelector = ({ showModal, setShowModal, toggleModal, 
+  selection, setSelection, setSelectedData, tables, setTables }) => {
+
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [sqlJs, setSqlJs] = useState(null);
@@ -94,21 +94,8 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
     setIsAnalyzing(true);
 
     try {
-      // Get table columns
-      const tableInfoResult = db.exec(`PRAGMA table_info(${selection.selectedTable})`);
-      const columns = tableInfoResult[0].values.map(row => row[1]); // column names are at index 1
-      
-      // Get sample rows for analysis (first 3 rows)
-      const sampleResult = db.exec(`SELECT * FROM ${selection.selectedTable} LIMIT 3`);
-      const sampleRows = sampleResult.length > 0 
-        ? sampleResult[0].values.map(row => {
-            const obj = {};
-            columns.forEach((col, idx) => {
-              obj[col] = row[idx];
-            });
-            return obj;
-          })
-        : [];
+      // Use extractTableInfo utility
+      const { columns, sampleRows } = extractTableInfo(db, selection.selectedTable, 3);
 
       // Call API to analyze table structure
       const analysis = await analyzeTableForVisualization(columns, sampleRows);
@@ -125,7 +112,7 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
       // Extract data based on result range
       let limit = '';
       let orderBy = '';
-      
+
       switch (selection.selectedResultRange) {
         case 'last10':
           limit = 'LIMIT 10';
@@ -159,13 +146,13 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
       // Query the full data
       const query = `SELECT * FROM ${selection.selectedTable} ${orderBy} ${limit}`;
       const dataResult = db.exec(query);
-      
+
       if (dataResult.length === 0 || dataResult[0].values.length === 0) {
         alert('No data found in the selected table.');
         setIsAnalyzing(false);
         return;
       }
-
+      
       // Transform data based on analysis
       const rawData = dataResult[0].values.map(row => {
         const obj = {};
@@ -174,17 +161,17 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
         });
         return obj;
       });
-      console.log('Raw Data:', rawData);
+
       // Format data for chart visualization
       const formattedData = transformDataForChart(rawData, analysis);
-  
+
       if (setSelectedData) {
         setSelectedData(formattedData);
       }
 
       setShowModal(false);
       setIsAnalyzing(false);
-      
+
     } catch (error) {
       console.error('Error processing table data:', error);
       alert('Failed to process table data: ' + error.message);
@@ -215,7 +202,7 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
     if (selection.db) {
       selection.db.close();
     }
-    setSelection({ selectedTable: '', selectedDateRange: '', selectedResultRange: '', db: null, dbFile: null });
+    setSelection({ selectedTable: '', selectedResultRange: '', db: null, dbFile: null });
     setTables([]);
   };
 
@@ -275,7 +262,7 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
                     setSelection(prev => ({
                       ...prev,
                       selectedTable: value,
-                      selectedDateRange: '30min',
+                      // selectedDateRange: '30min',
                       selectedResultRange: 'all'
                     }));
                   }}
@@ -291,7 +278,7 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
                   ))}
                 </select>
               </div>
-              <div className="mb-4">
+              {/* <div className="mb-4">
                 <label htmlFor="select-date-range" className="block text-gray-500 mb-2">Date Range</label>
                 <select
                   id="select-date-range"
@@ -308,7 +295,7 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
                   <option value="15d">Last 15 days</option>
                   <option value="30d">Last 30 days</option>
                 </select>
-              </div>
+              </div> */}
               <div className="mb-4">
                 <label htmlFor="select-result-range" className="block text-gray-500 mb-2">Show Results</label>
                 <select

@@ -74,7 +74,7 @@ const LineChart = ({ data, selection }) => {
       ...ds,
       type: 'line',
       showLine: true,
-      pointRadius: 4,
+      pointRadius: 0,
       fill: false,
       borderWidth: 2,
     }))

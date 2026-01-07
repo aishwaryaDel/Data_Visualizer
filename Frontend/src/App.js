@@ -4,7 +4,7 @@ import Main from './components/Main';
 
 function App() {
   return (
-    <div className="App bg-black h-screen w-screen">
+    <div className="App bg-black h-screen w-screen overflow-hidden">
       <NavBar />
 
       {/* Container that will hold main content */}
