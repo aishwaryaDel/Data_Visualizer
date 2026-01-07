@@ -27,7 +27,7 @@ const PromptBar = ({ setSelectedData }) => {
           setResponseData(apiResponse);
         } catch (error) {
           // setSelectedData({ error: 'API request failed.' });
-          setResponseData({ result: 'API request failed.' });
+          setResponseData({ message: 'API request failed.' });
         } finally {
           setIsLoading(false);
         }
@@ -45,12 +45,12 @@ const PromptBar = ({ setSelectedData }) => {
             ? searchPrompt
             : isLoading
               ? 'Generating...'
-              : (responseData?.result ? responseData.result : searchPrompt)
+              : (responseData?.message ? responseData.message : searchPrompt)
         }
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         onBlur={() => setIsTyping(false)}
-        className={`w-[100%] cursor-auto bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none transition-all duration-300 resize-none ${isTyping ? 'h-[70%]' : 'h-[32px]'} ${(isLoading || responseData?.result) ? 'text-right' : ''}`}
+        className={`w-[100%] cursor-auto bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none transition-all duration-300 resize-none ${isTyping ? 'h-[70%]' : 'h-[32px]'} ${(isLoading || responseData?.message) ? 'text-right' : ''}`}
         style={isTyping ? { height: '20%' } : { height: '32px' }}
         rows={isTyping ? 3 : 1}
         disabled={isLoading}

@@ -82,3 +82,15 @@ Guidelines:
     };
   }
 }
+
+// Fetch tables from a database using a connection string via backend
+export async function fetchTablesWithConnectionString(connectionString) {
+  try {
+    const response = await axios.post('/api/db/tables', { connectionString });
+    // Expecting response.data.tables to be an array of table names
+    return response.data.tables;
+  } catch (error) {
+    console.error('Error fetching tables with connection string:', error);
+    throw error;
+  }
+}

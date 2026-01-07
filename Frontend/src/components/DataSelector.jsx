@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { IoMdClose } from "react-icons/io";
 import { FiUpload } from 'react-icons/fi';
-import { analyzeTableForVisualization } from '../api_functions/api';
+import { analyzeTableForVisualization, fetchTablesWithConnectionString } from '../api_functions/api';
 import { extractTableInfo } from '../api_functions/sqlExtract';
 
 const DataSelector = ({ showModal, setShowModal, toggleModal, 
@@ -10,6 +10,9 @@ const DataSelector = ({ showModal, setShowModal, toggleModal,
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [sqlJs, setSqlJs] = useState(null);
+  const [connectorType, setConnectorType] = useState('file'); // 'file', 'connectionString', 'other'
+  const [connectionString, setConnectionString] = useState('');
+  const [otherParams, setOtherParams] = useState({});
   const fileInputRef = useRef();
   const dbFile = selection.dbFile;
   const db = selection.db;
@@ -35,7 +38,7 @@ const DataSelector = ({ showModal, setShowModal, toggleModal,
     loadSqlJs();
   }, []);
 
-  // Parse SQLite database and extract table names
+  // Parse SQLite database and extract table names (for file upload)
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -78,6 +81,23 @@ const DataSelector = ({ showModal, setShowModal, toggleModal,
       alert('Failed to parse database file. Please ensure it is a valid SQLite database.');
       setSelection(sel => ({ ...sel, dbFile: null, db: null }));
       setTables([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle connection string input (calls backend API)
+  const handleConnectWithString = async () => {
+    setIsLoading(true);
+    setTables([]);
+    try {
+      const tables = await fetchTablesWithConnectionString(connectionString);
+      setTables(tables);
+      if (tables.length === 0) {
+        alert('No tables found for this connection string.');
+      }
+    } catch (error) {
+      console.error('Failed to connect or fetch tables. Please check your connection string and backend.');
     } finally {
       setIsLoading(false);
     }
@@ -227,31 +247,94 @@ const DataSelector = ({ showModal, setShowModal, toggleModal,
                 className='cursor-pointer text-gray-500 hover:text-white transition-all duration-300' />
             </div>
             <form onSubmit={handleSubmit}>
+              {/* Connector Type Selection */}
               <div className="mb-4">
-                <label className="block text-gray-500 mb-2">Upload Database File</label>
-                <div className="flex items-center gap-2">
-                  <div
-                    onClick={() => !isLoading && fileInputRef.current && fileInputRef.current.click()}
-                    className={`w-full flex flex-col items-center gap-2 border border-gray-600 text-white px-3 py-2 rounded-md transition-all duration-300 focus:outline-none ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                  >
-                    <div className='flex items-center gap-2'>
-                      <FiUpload className="text-lg" />
-                      <span className="text-sm">{isLoading ? 'Loading...' : 'Upload'}</span>
+                <label className="block text-gray-500 mb-2">Connector Type</label>
+                <select
+                  value={connectorType}
+                  onChange={e => {
+                    setConnectorType(e.target.value);
+                    setTables([]);
+                    setSelection(sel => ({ ...sel, dbFile: null, db: null, selectedTable: '' }));
+                  }}
+                  className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
+                >
+                  <option value="file">SQLite File Upload</option>
+                  <option value="connectionString">Connection String</option>
+                  <option value="other">Other (Custom)</option>
+                </select>
+              </div>
+
+              {/* File Upload Option */}
+              {connectorType === 'file' && (
+                <div className="mb-4">
+                  <label className="block text-gray-500 mb-2">Upload Database File</label>
+                  <div className="flex items-center gap-2">
+                    <div
+                      onClick={() => !isLoading && fileInputRef.current && fileInputRef.current.click()}
+                      className={`w-full flex flex-col items-center gap-2 border border-gray-600 text-white px-3 py-2 rounded-md transition-all duration-300 focus:outline-none ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      <div className='flex items-center gap-2'>
+                        <FiUpload className="text-lg" />
+                        <span className="text-sm">{isLoading ? 'Loading...' : 'Upload'}</span>
+                      </div>
+                      <p className='text-xs text-gray-400'>{dbFile ? dbFile.name : "No file selected"}</p>
                     </div>
-                    <p className='text-xs text-gray-400'>{dbFile ? dbFile.name : "No file selected"}</p>
+                    <input
+                      ref={fileInputRef}
+                      id="upload-database"
+                      name="upload-database"
+                      type="file"
+                      accept=".db,.sqlite,.sqlite3"
+                      onChange={handleFileChange}
+                      className="hidden"
+                      disabled={isLoading}
+                    />
                   </div>
+                </div>
+              )}
+
+              {/* Connection String Option */}
+              {connectorType === 'connectionString' && (
+                <div className="mb-4">
+                  <label className="block text-gray-500 mb-2">Connection String</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={connectionString}
+                      onChange={e => setConnectionString(e.target.value)}
+                      className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
+                      placeholder="Enter DB connection string"
+                      disabled={isLoading}
+                    />
+                    <button
+                      type="button"
+                      className="bg-blue-900 px-3 py-1 rounded-md text-white hover:bg-blue-950 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={handleConnectWithString}
+                      disabled={isLoading || !connectionString}
+                    >
+                      Connect
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Other/Custom Option */}
+              {connectorType === 'other' && (
+                <div className="mb-4">
+                  <label className="block text-gray-500 mb-2">Custom Parameters</label>
                   <input
-                    ref={fileInputRef}
-                    id="upload-database"
-                    name="upload-database"
-                    type="file"
-                    accept=".db,.sqlite,.sqlite3"
-                    onChange={handleFileChange}
-                    className="hidden"
+                    type="text"
+                    value={otherParams.custom || ''}
+                    onChange={e => setOtherParams({ ...otherParams, custom: e.target.value })}
+                    className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
+                    placeholder="Enter custom connection info"
                     disabled={isLoading}
                   />
                 </div>
-              </div>
+              )}
+
+              {/* Table Selection (enabled for file or connection string if tables are loaded) */}
               <div className="mb-4">
                 <label htmlFor="select-table" className="block text-gray-500 mb-2">Table</label>
                 <select
@@ -262,40 +345,22 @@ const DataSelector = ({ showModal, setShowModal, toggleModal,
                     setSelection(prev => ({
                       ...prev,
                       selectedTable: value,
-                      // selectedDateRange: '30min',
                       selectedResultRange: 'all'
                     }));
                   }}
                   className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
                   required
-                  disabled={!dbFile || isLoading}
+                  disabled={isLoading || tables.length === 0}
                 >
                   <option value="">
-                    {isLoading ? 'Loading tables...' : dbFile ? 'Select table' : 'Upload database file first'}
+                    {isLoading ? 'Loading tables...' : tables.length > 0 ? 'Select table' : 'No tables loaded'}
                   </option>
                   {tables.map((t, i) => (
                     <option key={i} value={t}>{t}</option>
                   ))}
                 </select>
               </div>
-              {/* <div className="mb-4">
-                <label htmlFor="select-date-range" className="block text-gray-500 mb-2">Date Range</label>
-                <select
-                  id="select-date-range"
-                  value={selection.selectedDateRange}
-                  onChange={(e) => setSelection(prev => ({ ...prev, selectedDateRange: e.target.value }))}
-                  className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
-                  required
-                >
-                  <option value="">Select date range</option>
-                  <option value="30min">Last 30 mins</option>
-                  <option value="1hr">Last 1 hr</option>
-                  <option value="1d">Last 1 day</option>
-                  <option value="7d">Last 7 days</option>
-                  <option value="15d">Last 15 days</option>
-                  <option value="30d">Last 30 days</option>
-                </select>
-              </div> */}
+
               <div className="mb-4">
                 <label htmlFor="select-result-range" className="block text-gray-500 mb-2">Show Results</label>
                 <select
