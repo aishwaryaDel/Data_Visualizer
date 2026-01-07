@@ -1,5 +1,4 @@
 import React, { useState } from 'react'
-import sampleData from '../sampleData.json';
 import { fetchPromptResponse } from '../api_functions/api';
 
 const PromptBar = ({ setSelectedData }) => {

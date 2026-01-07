@@ -1,41 +1,225 @@
 
 
-import React, { useState, useRef } from 'react';
-import sampleData from '../sampleData.json';
+import React, { useState, useRef, useEffect } from 'react';
 import { IoMdClose } from "react-icons/io";
 import { FiUpload } from 'react-icons/fi';
+import { analyzeTableForVisualization } from '../api_functions/api';
 
 const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSelection, setSelectedData }) => {
   const [dbFile, setDbFile] = useState(null);
   const [tables, setTables] = useState([]);
+  const [db, setDb] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [sqlJs, setSqlJs] = useState(null);
   const fileInputRef = useRef();
 
-  // Simulate extracting tables from uploaded file
-  const handleFileChange = (e) => {
+  // Load SQL.js library on component mount
+  useEffect(() => {
+    const loadSqlJs = async () => {
+      try {
+        // Wait for sql.js to be available from the script tag
+        if (window.initSqlJs) {
+          const SQL = await window.initSqlJs({
+            locateFile: file => `https://sql.js.org/dist/${file}`
+          });
+          setSqlJs(SQL);
+        } else {
+          // If not loaded yet, wait and try again
+          setTimeout(loadSqlJs, 100);
+        }
+      } catch (error) {
+        console.error('Error loading SQL.js:', error);
+      }
+    };
+    loadSqlJs();
+  }, []);
+
+  // Parse SQLite database and extract table names
+  const handleFileChange = async (e) => {
     const file = e.target.files[0];
+    if (!file) return;
+
+    if (!sqlJs) {
+      alert('SQL.js library is still loading. Please try again in a moment.');
+      return;
+    }
+
     setDbFile(file);
-    // Simulate: after file upload, populate tables (replace with real logic)
-    setTables(['Sample Table', 'Another Table']);
+    setIsLoading(true);
+    setTables([]);
     setSelection(sel => ({ ...sel, selectedTable: '' }));
+
+    try {
+      // Read file as array buffer
+      const fileBuffer = await file.arrayBuffer();
+      
+      // Load the database
+      const uint8Array = new Uint8Array(fileBuffer);
+      const database = new sqlJs.Database(uint8Array);
+      setDb(database);
+      
+      // Query to get all table names
+      const result = database.exec(`
+        SELECT name FROM sqlite_master 
+        WHERE type='table' 
+        AND name NOT LIKE 'sqlite_%'
+        ORDER BY name
+      `);
+      
+      if (result.length > 0 && result[0].values.length > 0) {
+        const tableNames = result[0].values.map(row => row[0]);
+        setTables(tableNames);
+      } else {
+        setTables([]);
+        alert('No tables found in the database file.');
+      }
+    } catch (error) {
+      console.error('Error parsing database file:', error);
+      alert('Failed to parse database file. Please ensure it is a valid SQLite database.');
+      setDbFile(null);
+      setTables([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (setSelectedData) {
-      setSelectedData(null);
-      setSelectedData(sampleData); // Replace with real data extraction logic
+    
+    if (!db || !selection.selectedTable) {
+      alert('Please select a table first.');
+      return;
     }
-    setShowModal(false);
-    setDbFile(null);
-    setTables([]);
+
+    setIsAnalyzing(true);
+
+    try {
+      // Get table columns
+      const tableInfoResult = db.exec(`PRAGMA table_info(${selection.selectedTable})`);
+      const columns = tableInfoResult[0].values.map(row => row[1]); // column names are at index 1
+      
+      // Get sample rows for analysis (first 3 rows)
+      const sampleResult = db.exec(`SELECT * FROM ${selection.selectedTable} LIMIT 3`);
+      const sampleRows = sampleResult.length > 0 
+        ? sampleResult[0].values.map(row => {
+            const obj = {};
+            columns.forEach((col, idx) => {
+              obj[col] = row[idx];
+            });
+            return obj;
+          })
+        : [];
+
+      // Call API to analyze table structure
+      console.log('Analyzing table structure...');
+      const analysis = await analyzeTableForVisualization(columns, sampleRows);
+      console.log('Analysis result:', analysis);
+
+      // Extract data based on result range
+      let limit = '';
+      let orderBy = '';
+      
+      switch (selection.selectedResultRange) {
+        case 'last100':
+          limit = 'LIMIT 100';
+          orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} DESC` : '';
+          break;
+        case 'last1000':
+          limit = 'LIMIT 1000';
+          orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} DESC` : '';
+          break;
+        case 'first100':
+          limit = 'LIMIT 100';
+          orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} ASC` : '';
+          break;
+        case 'first1000':
+          limit = 'LIMIT 1000';
+          orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} ASC` : '';
+          break;
+        default: // 'all'
+          limit = '';
+          orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} ASC` : '';
+      }
+
+      // Query the full data
+      const query = `SELECT * FROM ${selection.selectedTable} ${orderBy} ${limit}`;
+      const dataResult = db.exec(query);
+      
+      if (dataResult.length === 0 || dataResult[0].values.length === 0) {
+        alert('No data found in the selected table.');
+        setIsAnalyzing(false);
+        return;
+      }
+
+      // Transform data based on analysis
+      const rawData = dataResult[0].values.map(row => {
+        const obj = {};
+        columns.forEach((col, idx) => {
+          obj[col] = row[idx];
+        });
+        return obj;
+      });
+
+      // Format data for chart visualization
+      const formattedData = transformDataForChart(rawData, analysis);
+      
+      console.log('Formatted data:', formattedData);
+
+      if (setSelectedData) {
+        setSelectedData(formattedData);
+      }
+
+      setShowModal(false);
+      setIsAnalyzing(false);
+      
+    } catch (error) {
+      console.error('Error processing table data:', error);
+      alert('Failed to process table data: ' + error.message);
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Transform raw database data into chart-ready format
+  const transformDataForChart = (rawData, analysis) => {
+    const { xAxisColumn, yAxisColumn, groupByColumn, dateColumn } = analysis;
+    
+    if (groupByColumn) {
+      // If there's a grouping column (like 'tag' or 'category')
+      return rawData.map(row => ({
+        date: row[dateColumn || xAxisColumn] || row[xAxisColumn],
+        tag: row[groupByColumn],
+        value: parseFloat(row[yAxisColumn]) || 0
+      }));
+    } else {
+      // Simple x-y mapping without grouping
+      return rawData.map(row => ({
+        date: row[dateColumn || xAxisColumn] || row[xAxisColumn],
+        tag: 'Data',
+        value: parseFloat(row[yAxisColumn]) || 0
+      }));
+    }
   };
 
   const handleReset = () => {
     setSelection({ selectedTable: '', selectedDateRange: '', selectedResultRange: '' });
     setDbFile(null);
     setTables([]);
+    if (db) {
+      db.close();
+      setDb(null);
+    }
   };
+
+  // Cleanup database when component unmounts
+  useEffect(() => {
+    return () => {
+      if (db) {
+        db.close();
+      }
+    };
+  }, [db]);
 
   return (
     <>
@@ -53,12 +237,12 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
                 <label className="block text-gray-500 mb-2">Upload Database File</label>
                 <div className="flex items-center gap-2">
                   <div
-                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                    className="w-full flex flex-col items-center gap-2 border border-gray-600 text-white px-3 py-2 rounded-md transition-all duration-300 focus:outline-none"
+                    onClick={() => !isLoading && fileInputRef.current && fileInputRef.current.click()}
+                    className={`w-full flex flex-col items-center gap-2 border border-gray-600 text-white px-3 py-2 rounded-md transition-all duration-300 focus:outline-none ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                   >
                     <div className='flex items-center gap-2'>
                       <FiUpload className="text-lg" />
-                      <span className="text-sm">Upload</span>
+                      <span className="text-sm">{isLoading ? 'Loading...' : 'Upload'}</span>
                     </div>
                     <p className='text-xs text-gray-400'>{dbFile ? dbFile.name : "No file selected"}</p>
                   </div>
@@ -66,10 +250,11 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
                     ref={fileInputRef}
                     id="upload-database"
                     type="file"
-                    accept=".json,.csv,.db,.sqlite"
+                    accept=".db,.sqlite,.sqlite3"
                     onChange={handleFileChange}
                     className="hidden"
                     required
+                    disabled={isLoading}
                   />
                 </div>
               </div>
@@ -81,9 +266,11 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
                   onChange={(e) => setSelection(prev => ({ ...prev, selectedTable: e.target.value }))}
                   className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
                   required
-                  disabled={!dbFile}
+                  disabled={!dbFile || isLoading}
                 >
-                  <option value="">{dbFile ? 'Select table' : 'Upload database file first'}</option>
+                  <option value="">
+                    {isLoading ? 'Loading tables...' : dbFile ? 'Select table' : 'Upload database file first'}
+                  </option>
                   {tables.map((t, i) => (
                     <option key={i} value={t}>{t}</option>
                   ))}
@@ -129,10 +316,17 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, selection, setSele
                   type="button"
                   className="bg-gray-700 px-3 py-1 rounded-md text-white hover:bg-gray-800 transition-all duration-300"
                   onClick={handleReset}
+                  disabled={isAnalyzing}
                 >
                   Reset
                 </button>
-                <button type='submit' className='bg-green-900 px-3 py-1 rounded-md text-white hover:bg-green-950 transition-all duration-300'>Done</button>
+                <button 
+                  type='submit' 
+                  className='bg-green-900 px-3 py-1 rounded-md text-white hover:bg-green-950 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed'
+                  disabled={isAnalyzing}
+                >
+                  {isAnalyzing ? 'Analyzing...' : 'Done'}
+                </button>
               </div>
             </form>
           </div>

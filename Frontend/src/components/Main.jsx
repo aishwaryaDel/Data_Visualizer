@@ -12,6 +12,7 @@ const Main = () => {
   const [selectedData, setSelectedData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState('chart'); // 'chart' or 'table'
+  const [chartAnalysis, setChartAnalysis] = useState(null); // Store AI analysis results
   const [selection, setSelection] = useState({
     selectedTable: '',
     selectedDateRange: '',
