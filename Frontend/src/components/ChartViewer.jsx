@@ -3,6 +3,7 @@ import LineChart from './Visuals/LineChart';
 import BarChart from './Visuals/BarChart';
 import PieChart from './Visuals/PieChart';
 
+
 function prepareChartData(selectedData, selection) {
   if (
     !selectedData ||
@@ -17,7 +18,7 @@ function prepareChartData(selectedData, selection) {
     };
   }
 
-  const { type, xCol, yCol } = selection.selectedChartDetails;
+  const { type, xCol, yCol, groupCol } = selection.selectedChartDetails;
   const rows = selectedData.rows;
 
   // Get unique x values for x-axis
@@ -57,7 +58,32 @@ function prepareChartData(selectedData, selection) {
     };
   }
 
-  // For line/bar chart, one dataset
+  // For line/bar chart, support groupCol for multi-series
+  if (groupCol) {
+    // Get unique group values
+    const groupValues = Array.from(new Set(rows.map(item => item[groupCol])));
+    // Assign colors for each group
+    const colorPalette = [
+      'rgba(34,197,94,0.7)', 'rgba(59,130,246,0.7)', 'rgba(244,63,94,0.7)',
+      'rgba(251,191,36,0.7)', 'rgba(168,85,247,0.7)', 'rgba(16,185,129,0.7)', 'rgba(239,68,68,0.7)'
+    ];
+    const datasets = groupValues.map((group, idx) => ({
+      label: group,
+      data: labels.map(label => {
+        const found = rows.find(item => item[xCol] === label && item[groupCol] === group);
+        return found ? parseFloat(found[yCol]) : 0;
+      }),
+      borderColor: colorPalette[idx % colorPalette.length],
+      backgroundColor: colorPalette[idx % colorPalette.length],
+      tension: 0.4,
+    }));
+    return {
+      labels: formattedLabels,
+      datasets,
+    };
+  }
+
+  // For line/bar chart, one dataset (no group)
   return {
     labels: formattedLabels,
     datasets: [

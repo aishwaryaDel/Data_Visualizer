@@ -108,13 +108,15 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, setView,
 
 
   // Chart type and axis selection logic using selectedChartDetails
+
   const handleChartTypeChange = (e) => {
     const type = e.target.value;
     setSelection(prev => ({
       ...prev,
-      selectedChartDetails: { type, xCol: '', yCol: '' }
+      selectedChartDetails: { type, xCol: '', yCol: '', groupCol: '' }
     }));
   };
+
 
   const handleAxisChange = (axis, value) => {
     setSelection(prev => ({
@@ -122,6 +124,16 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, setView,
       selectedChartDetails: {
         ...prev.selectedChartDetails,
         [axis]: value
+      }
+    }));
+  };
+
+  const handleGroupByChange = (value) => {
+    setSelection(prev => ({
+      ...prev,
+      selectedChartDetails: {
+        ...prev.selectedChartDetails,
+        groupCol: value
       }
     }));
   };
@@ -142,6 +154,7 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, setView,
     const chartType = selection.selectedChartDetails?.type;
     const xCol = selection.selectedChartDetails?.xCol;
     const yCol = selection.selectedChartDetails?.yCol;
+    const groupCol = selection.selectedChartDetails?.groupCol;
     if (!db || !selection.selectedTable || !chartType) {
       setError('Please select a table and chart type.');
       return;
@@ -162,7 +175,7 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, setView,
         db,
         selection.selectedTable,
         chartType,
-        { xCol, yCol },
+        { xCol, yCol, groupCol },
         selection.selectedResultRange || 'all'
       );
       if (resultData?.rows?.length !== 0) {
@@ -365,6 +378,17 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, setView,
                         className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none mb-2"
                       >
                         <option value="">Select Y Axis</option>
+                        {tableColumns.map((col, i) => (
+                          <option key={i} value={col}>{col}</option>
+                        ))}
+                      </select>
+                      <label className="block text-gray-500 mb-2">Group By (Optional)</label>
+                      <select
+                        value={selection.selectedChartDetails.groupCol || ''}
+                        onChange={e => handleGroupByChange(e.target.value)}
+                        className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none mb-2"
+                      >
+                        <option value="">None</option>
                         {tableColumns.map((col, i) => (
                           <option key={i} value={col}>{col}</option>
                         ))}

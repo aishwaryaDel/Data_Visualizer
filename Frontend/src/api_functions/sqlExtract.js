@@ -57,6 +57,9 @@ export async function extractChartData(db, selectedTable, chartType, attributes,
     selectedColumns = [attributes.xCol, attributes.yCol];
   } else if (chartType === 'line' || chartType === 'bar') {
     selectedColumns = [attributes.xCol, attributes.yCol];
+    if (attributes.groupCol) {
+      selectedColumns.push(attributes.groupCol);
+    }
   } else {
     throw new Error('Unsupported chart type');
   }
