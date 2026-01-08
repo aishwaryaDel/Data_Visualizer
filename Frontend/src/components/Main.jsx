@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import PromptBar from './PromptBar'
+import QueryBar from './QueryBar'
 import DataSelector from './DataSelector'
 import ChartViewer from './ChartViewer';
 import TableViewer from './TableViewer';
@@ -10,16 +10,18 @@ const Main = () => {
 
   const [showModal, setShowModal] = useState(false);
   const [tables, setTables] = useState([]);
-  const [selectedData, setSelectedData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState('chart'); // 'chart' or 'table'
   const [selection, setSelection] = useState({
     dbFile: null,
     db: null,
     selectedTable: '',
+    selectedChartDetails: {
+      type: '',
+    },
     // selectedDateRange: '',
     selectedResultRange: '',
-    chartType: 'line',
+    resultData: null,
   });
 
 
@@ -53,22 +55,11 @@ const Main = () => {
     setShowModal(!showModal);
   };
 
-  // Custom setter to control loading state
-  const handleSetSelectedData = (data) => {
-    setView('chart');
-    setLoading(true);
-    setSelectedData(null);
-    setTimeout(() => {
-      setSelectedData(data);
-      setLoading(false);
-    }, 1000);
-  };
-
   return (
     <>
       {/* Modal to create/raise ticket  */}
-      <DataSelector showModal={showModal} setShowModal={setShowModal} toggleModal={toggleModal}
-        selection={selection} setSelection={setSelection} setSelectedData={handleSetSelectedData}
+      <DataSelector showModal={showModal} setShowModal={setShowModal} toggleModal={toggleModal} setView={setView}
+        selection={selection} setSelection={setSelection} setChartLoading={setLoading}
         tables={tables} setTables={setTables} />
 
       {/* Top container  */}
@@ -78,22 +69,22 @@ const Main = () => {
         tables={tables} selection={selection} />
 
         <div className='w-[90vw] h-[100%] flex flex-col items-end justify-between gap-4'>
-          {/* Prompt bar here */}
-          <PromptBar setSelectedData={setSelectedData} />
+          {/* Query bar here */}
+          <QueryBar setSelection={setSelection} setView={setView} />
 
           {/* Right container display visualization */}
           <div className='w-full h-[100%] border overflow-auto border-gray-500 rounded-md pt-1 pb-3 px-5'>
-            {selectedData &&
-              <div className='sticky top-0 z-10 w-full flex items-center justify-end gap-4'>
+            {selection?.resultData &&
+              <div className='sticky top-0 z-10 w-full bg-black flex items-center justify-end gap-4'>
                 {/* <span className=' text-gray-500 text-sm py-2'>Time range: {formatDateRange(selection.selectedDateRange)}</span> */}
                 <span className=' text-gray-500 text-sm py-2'>Show: {formatResultRange(selection.selectedResultRange)}</span>
               </div>
             }
 
             {loading ? (
-              view === 'chart' ? <ChartViewer selection={selection} data={selectedData} loading={true} /> : <TableViewer loading={true} />
-            ) : selectedData ? (
-              view === 'chart' ? <ChartViewer selection={selection} data={selectedData} loading={false} /> : <TableViewer data={selectedData} loading={false} />
+              view === 'chart' ? <ChartViewer selection={selection} data={selection.resultData} loading={true} /> : <TableViewer loading={true} />
+            ) : selection?.resultData ? (
+              view === 'chart' ? <ChartViewer selection={selection} data={selection.resultData} loading={false} /> : <TableViewer data={selection.resultData} loading={false} />
             ) : (
               <div className=' text-gray-500 text-center py-8'>
                 Select Data for Visualization

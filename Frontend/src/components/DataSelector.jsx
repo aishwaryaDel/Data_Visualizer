@@ -1,18 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { IoMdClose } from "react-icons/io";
 import { FiUpload } from 'react-icons/fi';
-import { analyzeTableForVisualization, fetchTablesWithConnectionString } from '../api_functions/api';
-import { extractTableInfo } from '../api_functions/sqlExtract';
+import { fetchTablesWithConnectionString } from '../api_functions/api';
+import { extractTableInfo, extractChartData } from '../api_functions/sqlExtract';
 
-const DataSelector = ({ showModal, setShowModal, toggleModal, 
-  selection, setSelection, setSelectedData, tables, setTables }) => {
+const DataSelector = ({ showModal, setShowModal, toggleModal, setView,
+  selection, setSelection, tables, setTables, setChartLoading }) => {
 
   const [isLoading, setIsLoading] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [error, setError] = useState('');
   const [sqlJs, setSqlJs] = useState(null);
   const [connectorType, setConnectorType] = useState('file'); // 'file', 'connectionString', 'other'
   const [connectionString, setConnectionString] = useState('');
   const [otherParams, setOtherParams] = useState({});
+  const [tableColumns, setTableColumns] = useState([]);
   const fileInputRef = useRef();
   const dbFile = selection.dbFile;
   const db = selection.db;
@@ -50,17 +51,17 @@ const DataSelector = ({ showModal, setShowModal, toggleModal,
 
     setIsLoading(true);
     setTables([]);
-    setSelection(sel => ({ ...sel, dbFile: file, selectedTable: '' }));
+    setSelection(sel => ({ ...sel, dbFile: file, selectedTable: '', selectedChartDetails: { type: '', xCol: '', yCol: '' } }));
 
     try {
       // Read file as array buffer
       const fileBuffer = await file.arrayBuffer();
-      
+
       // Load the database
       const uint8Array = new Uint8Array(fileBuffer);
       const database = new sqlJs.Database(uint8Array);
       setSelection(sel => ({ ...sel, db: database }));
-      
+
       // Query to get all table names
       const result = database.exec(`
         SELECT name FROM sqlite_master 
@@ -68,7 +69,7 @@ const DataSelector = ({ showModal, setShowModal, toggleModal,
         AND name NOT LIKE 'sqlite_%'
         ORDER BY name
       `);
-      
+
       if (result.length > 0 && result[0].values.length > 0) {
         const tableNames = result[0].values.map(row => row[0]);
         setTables(tableNames);
@@ -76,6 +77,7 @@ const DataSelector = ({ showModal, setShowModal, toggleModal,
         setTables([]);
         alert('No tables found in the database file.');
       }
+      setTableColumns([]);
     } catch (error) {
       console.error('Error parsing database file:', error);
       alert('Failed to parse database file. Please ensure it is a valid SQLite database.');
@@ -90,6 +92,7 @@ const DataSelector = ({ showModal, setShowModal, toggleModal,
   const handleConnectWithString = async () => {
     setIsLoading(true);
     setTables([]);
+    setTableColumns([]);
     try {
       const tables = await fetchTablesWithConnectionString(connectionString);
       setTables(tables);
@@ -103,127 +106,71 @@ const DataSelector = ({ showModal, setShowModal, toggleModal,
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!db || !selection.selectedTable) {
-      alert('Please select a table first.');
-      return;
-    }
 
-    setIsAnalyzing(true);
-
-    try {
-      // Use extractTableInfo utility
-      const { columns, sampleRows } = extractTableInfo(db, selection.selectedTable, 3);
-
-      // Call API to analyze table structure
-      const analysis = await analyzeTableForVisualization(columns, sampleRows);
-
-      // Set all analysis fields and selected table in selection
-      if (setSelection) {
-        setSelection(prev => ({
-          ...prev,
-          ...analysis,
-          selectedTable: selection.selectedTable
-        }));
-      }
-
-      // Extract data based on result range
-      let limit = '';
-      let orderBy = '';
-
-      switch (selection.selectedResultRange) {
-        case 'last10':
-          limit = 'LIMIT 10';
-          orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} DESC` : '';
-          break;
-        case 'last100':
-          limit = 'LIMIT 100';
-          orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} DESC` : '';
-          break;
-        case 'last1000':
-          limit = 'LIMIT 1000';
-          orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} DESC` : '';
-          break;
-        case 'first10':
-          limit = 'LIMIT 10';
-          orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} ASC` : '';
-          break;
-        case 'first100':
-          limit = 'LIMIT 100';
-          orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} ASC` : '';
-          break;
-        case 'first1000':
-          limit = 'LIMIT 1000';
-          orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} ASC` : '';
-          break;
-        default: // 'all'
-          limit = '';
-          orderBy = analysis.dateColumn ? `ORDER BY ${analysis.dateColumn} ASC` : '';
-      }
-
-      // Query the full data
-      const query = `SELECT * FROM ${selection.selectedTable} ${orderBy} ${limit}`;
-      const dataResult = db.exec(query);
-
-      if (dataResult.length === 0 || dataResult[0].values.length === 0) {
-        alert('No data found in the selected table.');
-        setIsAnalyzing(false);
-        return;
-      }
-      
-      // Transform data based on analysis
-      const rawData = dataResult[0].values.map(row => {
-        const obj = {};
-        columns.forEach((col, idx) => {
-          obj[col] = row[idx];
-        });
-        return obj;
-      });
-
-      // Format data for chart visualization
-      const formattedData = transformDataForChart(rawData, analysis);
-
-      if (setSelectedData) {
-        setSelectedData(formattedData);
-      }
-
-      setShowModal(false);
-      setIsAnalyzing(false);
-
-    } catch (error) {
-      console.error('Error processing table data:', error);
-      alert('Failed to process table data: ' + error.message);
-      setIsAnalyzing(false);
-    }
+  // Chart type and axis selection logic using selectedChartDetails
+  const handleChartTypeChange = (e) => {
+    const type = e.target.value;
+    setSelection(prev => ({
+      ...prev,
+      selectedChartDetails: { type, xCol: '', yCol: '' }
+    }));
   };
 
-  // Transform raw database data into chart-ready format
-  const transformDataForChart = (rawData, analysis) => {
-    const { xAxisColumn, yAxisColumn, groupByColumn, dateColumn } = analysis;
-    // Build keys for output
-    const xKey = dateColumn || xAxisColumn;
-    const yKey = yAxisColumn;
-    const groupKey = groupByColumn;
-
-    return rawData.map(row => {
-      let obj = {};
-      if (xKey) obj[xKey] = row[xKey];
-      if (yKey) obj[yKey] = row[yKey];
-      if (groupKey) obj[groupKey] = row[groupKey];
-      // Optionally include all columns if needed:
-      // Object.assign(obj, row);
-      return obj;
-    });
+  const handleAxisChange = (axis, value) => {
+    setSelection(prev => ({
+      ...prev,
+      selectedChartDetails: {
+        ...prev.selectedChartDetails,
+        [axis]: value
+      }
+    }));
   };
 
   const handleReset = () => {
+    setError('');
     if (selection.db) {
       selection.db.close();
     }
-    setSelection({ selectedTable: '', selectedResultRange: '', db: null, dbFile: null });
+    setSelection({ selectedTable: '', selectedResultRange: '', db: null, dbFile: null, selectedChartDetails: { type: '', xCol: '', yCol: '' } });
     setTables([]);
+    setTableColumns([]);
+  };
+
+  const handleSubmit = async () => {
+    setError('');
+    // Validation: required columns selected and xCol != yCol
+    const chartType = selection.selectedChartDetails?.type;
+    const xCol = selection.selectedChartDetails?.xCol;
+    const yCol = selection.selectedChartDetails?.yCol;
+    if (!db || !selection.selectedTable || !chartType) {
+      setError('Please select a table and chart type.');
+      return;
+    }
+    if (!xCol || !yCol) {
+      setError('Please select both X and Y columns.');
+      return;
+    }
+    if (xCol === yCol) {
+      setError('X and Y columns must be different.');
+      return;
+    }
+    setShowModal(false);
+    setChartLoading(true);
+    setView('chart');
+    try {
+      const resultData = await extractChartData(
+        db,
+        selection.selectedTable,
+        chartType,
+        { xCol, yCol },
+        selection.selectedResultRange || 'all'
+      );
+      if (resultData?.rows?.length !== 0) {
+        setSelection({ ...selection, resultData })
+      }
+    } finally {
+      setChartLoading(false);
+    }
   };
 
   // Cleanup database when component unmounts
@@ -235,18 +182,36 @@ const DataSelector = ({ showModal, setShowModal, toggleModal,
     };
   }, [selection.db]);
 
+  // When table changes, fetch columns
+  useEffect(() => {
+    const fetchColumns = async () => {
+      if (db && selection.selectedTable) {
+        try {
+          const { columns } = extractTableInfo(db, selection.selectedTable, 1);
+          setTableColumns(columns);
+        } catch (e) {
+          setTableColumns([]);
+        }
+      } else {
+        setTableColumns([]);
+      }
+    };
+    fetchColumns();
+  }, [db, selection.selectedTable]);
+
   return (
     <>
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black backdrop-blur-sm bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-black text-white border border-gray-500 px-5 py-3 rounded-lg w-full max-w-lg">
-            <div className="flex justify-between items-center mb-4">
+          <div className="h-[90vh] bg-black text-white border border-gray-500 px-2 py-3 rounded-lg w-full max-w-lg flex flex-col justify-between">
+            <div className="flex justify-between items-center px-4">
               <h2 className="text-xl font-semibold">Select Data</h2>
               <IoMdClose onClick={toggleModal}
                 className='cursor-pointer text-gray-500 hover:text-white transition-all duration-300' />
             </div>
-            <form onSubmit={handleSubmit}>
+
+            <div className='w-full h-[85%] my-3 overflow-auto px-3'>
               {/* Connector Type Selection */}
               <div className="mb-4">
                 <label className="block text-gray-500 mb-2">Connector Type</label>
@@ -340,12 +305,13 @@ const DataSelector = ({ showModal, setShowModal, toggleModal,
                 <select
                   id="select-table"
                   value={selection.selectedTable}
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const value = e.target.value;
                     setSelection(prev => ({
                       ...prev,
                       selectedTable: value,
-                      selectedResultRange: 'all'
+                      selectedResultRange: 'all',
+                      selectedChartDetails: { type: '', xCol: '', yCol: '' }
                     }));
                   }}
                   className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
@@ -360,6 +326,79 @@ const DataSelector = ({ showModal, setShowModal, toggleModal,
                   ))}
                 </select>
               </div>
+
+              {/* Chart Type Dropdown */}
+              <div className="mb-4">
+                <label className="block text-gray-500 mb-2">Chart Type</label>
+                <select
+                  value={selection.selectedChartDetails?.type || ''}
+                  onChange={handleChartTypeChange}
+                  className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
+                >
+                  <option value="">Select chart type</option>
+                  <option value="line">Line Chart</option>
+                  <option value="bar">Bar Chart</option>
+                  <option value="pie">Pie Chart</option>
+                </select>
+              </div>
+
+              {/* Attribute Dropdowns based on chart type */}
+              {selection.selectedTable && selection.selectedChartDetails?.type && tableColumns.length > 0 && (
+                <div className="mb-4">
+                  {['line', 'bar'].includes(selection.selectedChartDetails.type) && (
+                    <>
+                      <label className="block text-gray-500 mb-2">X Axis</label>
+                      <select
+                        value={selection.selectedChartDetails.xCol || ''}
+                        onChange={e => handleAxisChange('xCol', e.target.value)}
+                        className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none mb-2"
+                      >
+                        <option value="">Select X Axis</option>
+                        {tableColumns.map((col, i) => (
+                          <option key={i} value={col}>{col}</option>
+                        ))}
+                      </select>
+                      <label className="block text-gray-500 mb-2">Y Axis</label>
+                      <select
+                        value={selection.selectedChartDetails.yCol || ''}
+                        onChange={e => handleAxisChange('yCol', e.target.value)}
+                        className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none mb-2"
+                      >
+                        <option value="">Select Y Axis</option>
+                        {tableColumns.map((col, i) => (
+                          <option key={i} value={col}>{col}</option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                  {selection.selectedChartDetails.type === 'pie' && (
+                    <>
+                      <label className="block text-gray-500 mb-2">Label Column</label>
+                      <select
+                        value={selection.selectedChartDetails.xCol || ''}
+                        onChange={e => handleAxisChange('xCol', e.target.value)}
+                        className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none mb-2"
+                      >
+                        <option value="">Select Label</option>
+                        {tableColumns.map((col, i) => (
+                          <option key={i} value={col}>{col}</option>
+                        ))}
+                      </select>
+                      <label className="block text-gray-500 mb-2">Value Column</label>
+                      <select
+                        value={selection.selectedChartDetails.yCol || ''}
+                        onChange={e => handleAxisChange('yCol', e.target.value)}
+                        className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
+                      >
+                        <option value="">Select Value</option>
+                        {tableColumns.map((col, i) => (
+                          <option key={i} value={col}>{col}</option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                </div>
+              )}
 
               <div className="mb-4">
                 <label htmlFor="select-result-range" className="block text-gray-500 mb-2">Show Results</label>
@@ -380,24 +419,29 @@ const DataSelector = ({ showModal, setShowModal, toggleModal,
                   <option value="first1000">First 1000 Rows</option>
                 </select>
               </div>
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  className="bg-gray-700 px-3 py-1 rounded-md text-white hover:bg-gray-800 transition-all duration-300"
-                  onClick={handleReset}
-                  disabled={isAnalyzing}
-                >
-                  Reset
-                </button>
-                <button 
-                  type='submit' 
-                  className='bg-green-900 px-3 py-1 rounded-md text-white hover:bg-green-950 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed'
-                  disabled={isAnalyzing}
-                >
-                  {isAnalyzing ? 'Analyzing...' : 'Done'}
-                </button>
-              </div>
-            </form>
+
+            </div>
+
+            {error && (
+              <div className="px-4 py-1 text-red-400 text-xs">{error}</div>
+            )}
+            <div className="flex justify-end gap-2 px-4">
+              <button
+                type="button"
+                className="bg-gray-700 px-3 py-1 rounded-md text-white hover:bg-gray-800 transition-all duration-300"
+                onClick={handleReset}
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                className="bg-green-900 px-3 py-1 rounded-md text-white hover:bg-green-950 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleSubmit}
+              >
+                Done
+              </button>
+            </div>
+            {/* End of modal content */}
           </div>
         </div>
       )}

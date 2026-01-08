@@ -29,12 +29,17 @@ const SideBar = ({ view, setView, toggleModal, tables, selection }) => {
             if (selection.selectedTable) {
                 setSelectedTable(selection.selectedTable);
             }
-            const cols = [];
-            if (selection.xAxisColumn) cols.push(selection.xAxisColumn);
-            if (selection.yAxisColumn && selection.yAxisColumn !== selection.xAxisColumn) cols.push(selection.yAxisColumn);
+            let cols = [];
+            // If resultData has columns, use those as checked columns
+            if (selection.resultData && Array.isArray(selection.resultData.columns)) {
+                cols = selection.resultData.columns;
+            } else {
+                if (selection.xAxisColumn) cols.push(selection.xAxisColumn);
+                if (selection.yAxisColumn && selection.yAxisColumn !== selection.xAxisColumn) cols.push(selection.yAxisColumn);
+            }
             setSelectedColumns(cols);
         }
-    }, [expanded, selection.selectedTable, selection.xAxisColumn, selection.yAxisColumn]);
+    }, [expanded, selection.selectedTable, selection.xAxisColumn, selection.yAxisColumn, selection.resultData]);
 
     const handleTableSelect = (table) => {
         setSelectedTable(table);

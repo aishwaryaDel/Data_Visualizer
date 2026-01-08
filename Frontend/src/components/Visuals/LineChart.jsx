@@ -23,9 +23,7 @@ ChartJS.register(
 
 
 
-const LineChart = ({ data, selection }) => {
-  const xLabel = selection?.dateColumn || selection?.xAxisColumn || 'X';
-  const yLabel = selection?.yAxisColumn || 'Y';
+const LineChart = ({ data, xAxisLabel, yAxisLabel }) => {
   const options = {
     responsive: true,
     plugins: {
@@ -48,7 +46,7 @@ const LineChart = ({ data, selection }) => {
       x: {
         title: {
           display: true,
-          text: xLabel.toUpperCase(),
+          text: (xAxisLabel || 'X').toUpperCase(),
           color: '#fff',
           font: { size: 11, weight: 'bold' },
         },
@@ -58,7 +56,7 @@ const LineChart = ({ data, selection }) => {
       y: {
         title: {
           display: true,
-          text: yLabel.toUpperCase(),
+          text: (yAxisLabel || 'Y').toUpperCase(),
           color: '#fff',
           font: { size: 11, weight: 'bold' },
         },

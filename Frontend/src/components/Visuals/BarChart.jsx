@@ -21,9 +21,7 @@ ChartJS.register(
 
 
 
-const BarChart = ({ data, selection }) => {
-  const xLabel = selection?.dateColumn || selection?.xAxisColumn || 'X';
-  const yLabel = selection?.yAxisColumn || 'Y';
+const BarChart = ({ data, xAxisLabel, yAxisLabel }) => {
   const options = {
     responsive: true,
     plugins: {
@@ -46,7 +44,7 @@ const BarChart = ({ data, selection }) => {
       x: {
         title: {
           display: true,
-          text: xLabel.toUpperCase(),
+          text: (xAxisLabel || 'X').toUpperCase(),
           color: '#fff',
           font: { size: 11, weight: 'bold' },
         },
@@ -56,7 +54,7 @@ const BarChart = ({ data, selection }) => {
       y: {
         title: {
           display: true,
-          text: yLabel.toUpperCase(),
+          text: (yAxisLabel || 'Y').toUpperCase(),
           color: '#fff',
           font: { size: 11, weight: 'bold' },
         },
