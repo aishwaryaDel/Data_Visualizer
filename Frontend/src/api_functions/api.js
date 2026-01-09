@@ -94,3 +94,63 @@ export async function fetchTablesWithConnectionString(connectionString) {
     throw error;
   }
 }
+
+// Azure Data Explorer (ADX/Kusto) API functions
+export async function connectToADX(clusterUrl, database, authMethod = 'aad', credentials = {}) {
+  try {
+    const response = await axios.post('/api/adx/connect', {
+      clusterUrl,
+      database,
+      authMethod, // 'aad', 'appKey', or 'token'
+      credentials // { clientId, clientSecret, tenantId } or { token }
+    });
+    return response.data; // { success: boolean, message: string }
+  } catch (error) {
+    console.error('Error connecting to ADX:', error);
+    throw error;
+  }
+}
+
+export async function fetchADXTables(clusterUrl, database) {
+  try {
+    const response = await axios.post('/api/adx/tables', {
+      clusterUrl,
+      database
+    });
+    // Returns list of tables in the database
+    return response.data.tables || [];
+  } catch (error) {
+    console.error('Error fetching ADX tables:', error);
+    throw error;
+  }
+}
+
+export async function fetchADXTableSchema(clusterUrl, database, tableName) {
+  try {
+    const response = await axios.post('/api/adx/schema', {
+      clusterUrl,
+      database,
+      tableName
+    });
+    // Returns { columns: [{name, type}], success: boolean }
+    return response.data.columns || [];
+  } catch (error) {
+    console.error('Error fetching ADX table schema:', error);
+    throw error;
+  }
+}
+
+export async function executeADXQuery(clusterUrl, database, query) {
+  try {
+    const response = await axios.post('/api/adx/query', {
+      clusterUrl,
+      database,
+      query
+    });
+    // Returns { rows: [], columns: [], success: boolean }
+    return response.data;
+  } catch (error) {
+    console.error('Error executing ADX query:', error);
+    throw error;
+  }
+}

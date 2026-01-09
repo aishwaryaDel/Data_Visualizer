@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { IoMdClose } from "react-icons/io";
 import { FiUpload } from 'react-icons/fi';
-import { fetchTablesWithConnectionString } from '../api_functions/api';
+import { fetchTablesWithConnectionString, connectToADX, fetchADXTables, fetchADXTableSchema } from '../api_functions/api';
 import { extractTableInfo, extractChartData } from '../api_functions/sqlExtract';
 
 const DataSelector = ({ showModal, setShowModal, toggleModal, setView,
@@ -10,10 +10,23 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, setView,
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [sqlJs, setSqlJs] = useState(null);
-  const [connectorType, setConnectorType] = useState('file'); // 'file', 'connectionString', 'other'
+  const [connectorType, setConnectorType] = useState('file'); // 'file', 'connectionString', 'adx', 'other'
   const [connectionString, setConnectionString] = useState('');
   const [otherParams, setOtherParams] = useState({});
   const [tableColumns, setTableColumns] = useState([]);
+  
+  // ADX specific state
+  const [adxConfig, setAdxConfig] = useState({
+    clusterUrl: '',
+    database: '',
+    authMethod: 'aad', // 'aad', 'appKey', 'token'
+    clientId: '',
+    clientSecret: '',
+    tenantId: '',
+    token: ''
+  });
+  const [adxConnected, setAdxConnected] = useState(false);
+  
   const fileInputRef = useRef();
   const dbFile = selection.dbFile;
   const db = selection.db;
@@ -104,6 +117,80 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, setView,
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Handle ADX connection
+  const handleConnectToADX = async () => {
+    setError('');
+    
+    // Validate required fields
+    if (!adxConfig.clusterUrl || !adxConfig.database) {
+      setError('Please provide Cluster URL and Database name.');
+      return;
+    }
+
+    // Validate auth credentials based on method
+    if (adxConfig.authMethod === 'appKey') {
+      if (!adxConfig.clientId || !adxConfig.clientSecret || !adxConfig.tenantId) {
+        setError('Please provide Client ID, Client Secret, and Tenant ID for App Key authentication.');
+        return;
+      }
+    } else if (adxConfig.authMethod === 'token') {
+      if (!adxConfig.token) {
+        setError('Please provide an authentication token.');
+        return;
+      }
+    }
+
+    setIsLoading(true);
+    setTables([]);
+    setTableColumns([]);
+    setAdxConnected(false);
+
+    try {
+      // First, test connection
+      const credentials = adxConfig.authMethod === 'appKey' 
+        ? { clientId: adxConfig.clientId, clientSecret: adxConfig.clientSecret, tenantId: adxConfig.tenantId }
+        : adxConfig.authMethod === 'token'
+        ? { token: adxConfig.token }
+        : {};
+
+      const connectResult = await connectToADX(
+        adxConfig.clusterUrl,
+        adxConfig.database,
+        adxConfig.authMethod,
+        credentials
+      );
+
+      if (connectResult.success) {
+        setAdxConnected(true);
+        
+        // Fetch tables
+        const tables = await fetchADXTables(adxConfig.clusterUrl, adxConfig.database);
+        setTables(tables);
+        
+        if (tables.length === 0) {
+          setError('Connected successfully, but no tables found in the database.');
+        } else {
+          setError('');
+        }
+      } else {
+        setError(connectResult.message || 'Failed to connect to ADX cluster.');
+      }
+    } catch (error) {
+      console.error('Error connecting to ADX:', error);
+      setError('Failed to connect to ADX. Please check your credentials and cluster URL.');
+      setAdxConnected(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle ADX config changes
+  const handleAdxConfigChange = (field, value) => {
+    setAdxConfig(prev => ({ ...prev, [field]: value }));
+    setAdxConnected(false);
+    setTables([]);
   };
 
 
@@ -198,7 +285,21 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, setView,
   // When table changes, fetch columns
   useEffect(() => {
     const fetchColumns = async () => {
-      if (db && selection.selectedTable) {
+      if (connectorType === 'adx' && adxConnected && selection.selectedTable) {
+        // Fetch ADX table schema
+        try {
+          const columns = await fetchADXTableSchema(
+            adxConfig.clusterUrl,
+            adxConfig.database,
+            selection.selectedTable
+          );
+          setTableColumns(columns.map(col => col.name || col));
+        } catch (e) {
+          console.error('Error fetching ADX table schema:', e);
+          setTableColumns([]);
+        }
+      } else if (db && selection.selectedTable) {
+        // Fetch SQLite table columns
         try {
           const { columns } = extractTableInfo(db, selection.selectedTable, 1);
           setTableColumns(columns);
@@ -210,7 +311,7 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, setView,
       }
     };
     fetchColumns();
-  }, [db, selection.selectedTable]);
+  }, [db, selection.selectedTable, connectorType, adxConnected, adxConfig.clusterUrl, adxConfig.database]);
 
   return (
     <>
@@ -233,12 +334,16 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, setView,
                   onChange={e => {
                     setConnectorType(e.target.value);
                     setTables([]);
+                    setTableColumns([]);
+                    setAdxConnected(false);
+                    setError('');
                     setSelection(sel => ({ ...sel, dbFile: null, db: null, selectedTable: '' }));
                   }}
                   className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
                 >
                   <option value="file">SQLite File Upload</option>
                   <option value="connectionString">Connection String</option>
+                  <option value="adx">Azure Data Explorer (ADX/Kusto)</option>
                   <option value="other">Other (Custom)</option>
                 </select>
               </div>
@@ -293,6 +398,129 @@ const DataSelector = ({ showModal, setShowModal, toggleModal, setView,
                     >
                       Connect
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Azure Data Explorer (ADX) Option */}
+              {connectorType === 'adx' && (
+                <div className="mb-4 space-y-3">
+                  <div>
+                    <label className="block text-gray-500 mb-2">Cluster URL *</label>
+                    <input
+                      type="text"
+                      value={adxConfig.clusterUrl}
+                      onChange={e => handleAdxConfigChange('clusterUrl', e.target.value)}
+                      className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
+                      placeholder="https://yourcluster.region.kusto.windows.net"
+                      disabled={isLoading || adxConnected}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-500 mb-2">Database Name *</label>
+                    <input
+                      type="text"
+                      value={adxConfig.database}
+                      onChange={e => handleAdxConfigChange('database', e.target.value)}
+                      className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
+                      placeholder="Your database name"
+                      disabled={isLoading || adxConnected}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-500 mb-2">Authentication Method</label>
+                    <select
+                      value={adxConfig.authMethod}
+                      onChange={e => handleAdxConfigChange('authMethod', e.target.value)}
+                      className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
+                      disabled={isLoading || adxConnected}
+                    >
+                      <option value="aad">Azure AD (Interactive)</option>
+                      <option value="appKey">App Key (Service Principal)</option>
+                      <option value="token">Bearer Token</option>
+                    </select>
+                  </div>
+
+                  {/* App Key Authentication Fields */}
+                  {adxConfig.authMethod === 'appKey' && (
+                    <>
+                      <div>
+                        <label className="block text-gray-500 mb-2">Client ID *</label>
+                        <input
+                          type="text"
+                          value={adxConfig.clientId}
+                          onChange={e => handleAdxConfigChange('clientId', e.target.value)}
+                          className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
+                          placeholder="Application (client) ID"
+                          disabled={isLoading || adxConnected}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-gray-500 mb-2">Client Secret *</label>
+                        <input
+                          type="password"
+                          value={adxConfig.clientSecret}
+                          onChange={e => handleAdxConfigChange('clientSecret', e.target.value)}
+                          className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
+                          placeholder="Client secret value"
+                          disabled={isLoading || adxConnected}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-gray-500 mb-2">Tenant ID *</label>
+                        <input
+                          type="text"
+                          value={adxConfig.tenantId}
+                          onChange={e => handleAdxConfigChange('tenantId', e.target.value)}
+                          className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
+                          placeholder="Directory (tenant) ID"
+                          disabled={isLoading || adxConnected}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Bearer Token Authentication */}
+                  {adxConfig.authMethod === 'token' && (
+                    <div>
+                      <label className="block text-gray-500 mb-2">Bearer Token *</label>
+                      <input
+                        type="password"
+                        value={adxConfig.token}
+                        onChange={e => handleAdxConfigChange('token', e.target.value)}
+                        className="w-full bg-black border border-gray-600 rounded-md text-sm p-1 text-white placeholder:text-gray-500 focus:outline-none"
+                        placeholder="Your bearer token"
+                        disabled={isLoading || adxConnected}
+                      />
+                    </div>
+                  )}
+
+                  {/* Connect Button */}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className={`flex-1 px-3 py-2 rounded-md text-white transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${
+                        adxConnected ? 'bg-green-900 hover:bg-green-950' : 'bg-blue-900 hover:bg-blue-950'
+                      }`}
+                      onClick={handleConnectToADX}
+                      disabled={isLoading || adxConnected}
+                    >
+                      {isLoading ? 'Connecting...' : adxConnected ? '✓ Connected' : 'Connect to ADX'}
+                    </button>
+                    {adxConnected && (
+                      <button
+                        type="button"
+                        className="px-3 py-2 bg-gray-700 rounded-md text-white hover:bg-gray-800 transition-all duration-300"
+                        onClick={() => {
+                          setAdxConnected(false);
+                          setTables([]);
+                          setTableColumns([]);
+                          setSelection(sel => ({ ...sel, selectedTable: '' }));
+                        }}
+                      >
+                        Disconnect
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
